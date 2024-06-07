@@ -30,17 +30,20 @@ use std::env;
 use std::path::Path;
 
 fn main() {
+    // 用于处理编译早期出现的错误
     let early_error_handler =
         rustc_session::EarlyErrorHandler::new(rustc_session::config::ErrorOutputType::default());
 
     // Initialize loggers.
     if env::var("RUSTC_LOG").is_ok() {
+        // 初始化日志记录器，根据其函数注释，可以令rust logging能够正常使用
         rustc_driver::init_rustc_env_logger(&early_error_handler);
     }
     if env::var("MIRAI_LOG").is_ok() {
         let e = env_logger::Env::new()
-            .filter("MIRAI_LOG")
+            .filter("MIRAI_LOG") // 根据环境变量MIRAI_FLAG的值决定logging的等级为DEBUG、INFO等
             .write_style("MIRAI_LOG_STYLE");
+        // 将上述设置应用到日志记录器中
         env_logger::init_from_env(e);
     }
 
