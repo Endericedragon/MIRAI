@@ -71,9 +71,10 @@ fn make_options_parser(running_test_harness: bool) -> Command {
     parser
 }
 
-/// Represents options passed to MIRAI.
+/// 表示外界传递给MIRAI的配置选项
 #[derive(Debug, Default)]
 pub struct Options {
+    /// （可能是）以单个指定函数为起点进行分析
     pub single_func: Option<String>,
     pub test_only: bool,
     pub diag_level: DiagLevel,
@@ -114,6 +115,13 @@ impl Options {
         running_test_harness: bool,
     ) -> Vec<String> {
         self.parse(
+            // shellwords的split函数用来拆分命令行参数，详见https://docs.rs/shellwords/latest/shellwords/fn.split.html
+            // assert_eq!(shellwords::split("cat file.txt | less").unwrap(), ["cat", "file.txt", "|", "less"]);
+            // assert_eq!(shellwords::split("here are \"two words\"").unwrap(), ["here", "are", "two words"]);
+            // assert_eq!(shellwords::split(
+            //     "cargo mirai -- --call_graph_config cg.json").unwrap(),
+            //     ["cargo", "mirai", "--", "--call_graph_config", "cg.json"]
+            // );
             &shellwords::split(s).unwrap_or_else(|e| {
                 handler.early_error(format!("Cannot parse argument string: {e:?}"))
             }),
@@ -130,20 +138,30 @@ impl Options {
         handler: &EarlyErrorHandler,
         running_test_harness: bool,
     ) -> Vec<String> {
+        // 很常规，使用头尾两个指针，然后一趟扫描地分析
         let mut mirai_args_end = args.len();
         let mut rustc_args_start = 0;
+
+        // 例如在cargo mirai -- --call_graph_config cg.json中，
+        // 下列代码会按照中间那个" -- "把命令拆成两个部分
         if let Some((p, _)) = args.iter().find_position(|s| s.as_str() == "--") {
             mirai_args_end = p;
             rustc_args_start = p + 1;
         }
         let mirai_args = &args[0..mirai_args_end];
         let matches = if rustc_args_start == 0 {
+            // 这个分支处理的是" -- "之前的部分。作者团队假设这部分的参数其实不是传给MIRAI的，而是给rustc的。
+            // 之所以接到这些参数，可能是其他工具调用MIRAI的时候提供了多余的参数，因此没必要报错。英文原文如下：
             // The arguments may not be intended for MIRAI and may get here
             // via some tool, so do not report errors here, but just assume
             // that the arguments were not meant for MIRAI.
+
+            // make_options_parser()生成一个命令行参数解析器，其接受的命令行参数在其内部均有定义，故此处不再赘述。
             match make_options_parser(running_test_harness).try_get_matches_from(mirai_args.iter())
             {
                 Ok(matches) => {
+                    // 看来这些我们假设不是给MIRAI的参数其实是给MIRAI的，只好勉为其难地解析一下了
+                    // 此时，没有参数给到rustc
                     // Looks like these are MIRAI options after all and there are no rustc options.
                     rustc_args_start = args.len();
                     matches
@@ -155,6 +173,7 @@ impl Options {
                         return args.to_vec();
                     }
                     ErrorKind::UnknownArgument => {
+                        // 其他不认识的参数全丢给rustc
                         // Just send all of the arguments to rustc.
                         // Note that this means that MIRAI options and rustc options must always
                         // be separated by --. I.e. any  MIRAI options present in arguments list
@@ -168,10 +187,12 @@ impl Options {
                 },
             }
         } else {
+            // 这个分支处理的是" -- "之前的部分。
             // This will display error diagnostics for arguments that are not valid for MIRAI.
             make_options_parser(running_test_harness).get_matches_from(mirai_args.iter())
         };
 
+        // 还记得make_options_parser()中定义的各种参数吗？现在我们一个一个地解析他们，并用它们的值设置Options自身的成员。
         if matches.contains_id("single_func") {
             self.single_func = matches.get_one::<String>("single_func").cloned();
         }

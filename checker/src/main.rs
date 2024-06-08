@@ -49,6 +49,7 @@ fn main() {
 
     // Get any options specified via the MIRAI_FLAGS environment variable
     let mut options = Options::default();
+    // 通过MIRAI_FLAGS环境变量设置这个options，然后将 -- 右侧的东西返回回来
     let rustc_args = options.parse_from_str(
         &env::var("MIRAI_FLAGS").unwrap_or_default(),
         &early_error_handler,
@@ -57,6 +58,8 @@ fn main() {
     info!("MIRAI options from environment: {:?}", options);
 
     // Let arguments supplied on the command line override the environment variable.
+    // 也就是说，如果我在命令行中传递了参数，那么MIRAI会优先使用这些参数，而不理会环境变量中设置的参数
+    // std::env::args_os相当于Python的sys.argv
     let mut args = env::args_os()
         .enumerate()
         .map(|(i, arg)| {
@@ -77,8 +80,12 @@ fn main() {
     let mut rustc_command_line_arguments = options.parse(&args[1..], &early_error_handler, false);
     info!("MIRAI options modified by command line: {:?}", options);
 
+    // ICE = Internal Compiler Error，内部编译器错误。该钩子在发生ICE时被触发，其回调函数被设置为啥也不干的空函数
+    // 这个错误报告URL会在错误发生时显示给用户看，指导他们去哪里报告这个错误
     rustc_driver::install_ice_hook(rustc_driver::DEFAULT_BUG_REPORT_URL, |_| ());
+    // rustc在发生致命错误时似乎会发出一个哨兵信号，而下列函数会捕获该信号并将该信号将导致的panic转换为Result
     let result = rustc_driver::catch_fatal_errors(|| {
+        // 第79行把第一个参数给扔掉了，这儿给他补回来
         // Add back the binary name
         rustc_command_line_arguments.insert(0, args[0].clone());
 
@@ -93,8 +100,10 @@ fn main() {
             // the output from --print=cfg is not what it expects.
         } else {
             // Add rustc arguments supplied via the MIRAI_FLAGS environment variable
+            // 这rustc_args就是从MIRAI_FLAGS环境变量中获得的
             rustc_command_line_arguments.extend(rustc_args);
 
+            // 若参数列表中包含了以--sysroot开头的参数，那么借助mirai::utils找到sysroot，那里面有std库等内容
             let sysroot: String = "--sysroot".into();
             if !rustc_command_line_arguments
                 .iter()
@@ -106,6 +115,7 @@ fn main() {
                 rustc_command_line_arguments.push(utils::find_sysroot());
             }
 
+            // 若参数列表中包含always-encode-mir，则原样传递给rustc，只不过放在-Z后面
             let always_encode_mir: String = "always-encode-mir".into();
             if !rustc_command_line_arguments
                 .iter()
@@ -117,6 +127,7 @@ fn main() {
             }
 
             if options.test_only {
+                // 似乎是要把rmeta改成rlib
                 let prefix: String = "mirai_annotations=".into();
                 let postfix: String = ".rmeta".into();
 
@@ -131,6 +142,7 @@ fn main() {
             }
         }
 
+        // 这个callbacks所属的类MiraiCallbacks实现了rustc_driver::Callbacks的trait，所以可以送给rustc
         let mut callbacks = callbacks::MiraiCallbacks::new(options);
         debug!(
             "rustc_command_line_arguments {:?}",
@@ -139,7 +151,7 @@ fn main() {
         let compiler =
             rustc_driver::RunCompiler::new(&rustc_command_line_arguments, &mut callbacks);
         compiler.run()
-    })
+    }) // end of rustc_driver::catch_fatal_errors
     .and_then(|result| result);
     let exit_code = match result {
         Ok(_) => rustc_driver::EXIT_SUCCESS,

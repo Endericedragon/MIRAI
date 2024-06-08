@@ -40,6 +40,7 @@ pub struct MiraiCallbacks {
 
 /// Constructors
 impl MiraiCallbacks {
+    /// 将options据为己有，其他成员使用默认值
     pub fn new(options: Options) -> MiraiCallbacks {
         MiraiCallbacks {
             options,
@@ -48,7 +49,7 @@ impl MiraiCallbacks {
             test_run: false,
         }
     }
-
+    /// 除将成员test_run设置为true以外，其余内容和Self::new相同
     pub fn test_runner(options: Options) -> MiraiCallbacks {
         MiraiCallbacks {
             options,
@@ -75,7 +76,7 @@ impl rustc_driver::Callbacks for MiraiCallbacks {
     /// Called before creating the compiler instance
     #[logfn(TRACE)]
     fn config(&mut self, config: &mut interface::Config) {
-        self.file_name = config.input.source_name().prefer_remapped().to_string();
+        self.file_name = config.input.source_name().prefer_remapped().to_string(); // ???
         info!("Processing input file: {}", self.file_name);
         if config.opts.test {
             info!("in test only mode");
