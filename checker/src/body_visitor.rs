@@ -97,11 +97,15 @@ impl<'analysis, 'compilation, 'tcx> BodyVisitor<'analysis, 'compilation, 'tcx> {
         SolverStub::default()
     }
 
+    /// 首先根据def_id找到函数的名字和对应的MIR，最后构造一个BodyVisitor
     pub fn new(
         crate_visitor: &'analysis mut CrateVisitor<'compilation, 'tcx>,
         def_id: DefId,
+        // 一开始是空的Vec，后面会填充
         buffered_diagnostics: &'analysis mut Vec<DiagnosticBuilder<'compilation, ()>>,
+        // 一开始是个空的HashMap，后面会填充
         active_calls_map: &'analysis mut HashMap<DefId, u64>,
+        // 是从上层的CrateVisitor克隆而来
         type_cache: Rc<RefCell<TypeCache<'tcx>>>,
     ) -> BodyVisitor<'analysis, 'compilation, 'tcx> {
         let tcx = crate_visitor.tcx;

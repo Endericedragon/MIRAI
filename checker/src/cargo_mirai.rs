@@ -152,11 +152,11 @@ fn call_cargo_on_target(target: &Target, kind: &str) {
     // Serialize the remaining args into an environment variable.
     let args_vec: Vec<String> = args.collect();
     let env_string_value_for_debug = serde_json::to_string(&args_vec).expect("failed to serialize args");
-    println!("MIRAI_FLAGS = {}", env_string_value_for_debug);
+    // println!("MIRAI_FLAGS = {}", env_string_value_for_debug);
     if !args_vec.is_empty() {
         cmd.env(
             "MIRAI_FLAGS",
-            serde_json::to_string(&args_vec).expect("failed to serialize args"),
+            env_string_value_for_debug,
         );
     }
 

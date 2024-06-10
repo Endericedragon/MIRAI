@@ -72,6 +72,8 @@ impl<'compilation, 'tcx> CrateVisitor<'compilation, 'tcx> {
     pub fn analyze_some_bodies(&mut self) {
         let start_instant = Instant::now();
         // Determine the functions we want to analyze.
+        // 如果指定了single-func那就只分析那一个函数，如果指定了test-only那就分析测试函数
+        // 如果没有指定，那就返回None，指示MIRAI调用默认逻辑
         let selected_functions = self.get_selected_function_list();
 
         // Get the entry function
@@ -82,9 +84,12 @@ impl<'compilation, 'tcx> CrateVisitor<'compilation, 'tcx> {
         };
 
         // Analyze all functions that are white listed or public
+        // MIRAI_START_FRESH这个环境变量非常诡异，文档中找不到关于它的任何信息
         let building_standard_summaries = std::env::var("MIRAI_START_FRESH").is_ok();
         for local_def_id in self.tcx.hir().body_owners() {
             let def_id = local_def_id.to_def_id();
+            // 简单将summary_key_str理解为：唯一表示一个def_id，而且比DefId更容易读懂，就行了
+            // e.g. node_template.chain_spec.get_account_id_from_seed
             let name = utils::summary_key_str(self.tcx, def_id);
             if let Some(selections) = &selected_functions {
                 if !self.included_in(selections.as_ref(), name.as_ref(), def_id) {
@@ -123,6 +128,7 @@ impl<'compilation, 'tcx> CrateVisitor<'compilation, 'tcx> {
             } else {
                 info!("analyzing function {}", name);
             }
+            // 确认这个DefId对应的函数是要分析的，于是将其加入调用图中
             self.call_graph.add_croot(def_id);
             self.analyze_body(def_id);
             if start_instant.elapsed().as_secs() > self.options.max_analysis_time_for_crate {
@@ -189,6 +195,7 @@ impl<'compilation, 'tcx> CrateVisitor<'compilation, 'tcx> {
         {
             self.summary_cache.set_summary_for(def_id, summary);
         }
+        // 这个东东的insert会在插入新值的时候把旧值弹出来
         let old_diags = self.diagnostics_for.insert(def_id, diagnostics);
         checked_assume!(old_diags.is_none());
     }

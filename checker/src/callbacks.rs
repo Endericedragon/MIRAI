@@ -28,7 +28,7 @@ use tempfile::TempDir;
 
 /// Private state used to implement the callbacks.
 pub struct MiraiCallbacks {
-    /// Options provided to the analysis.
+    /// Options provided to the analysis. 根据main.rs中的说法，这些options都是从命令行里来的
     options: Options,
     /// The relative path of the file being compiled.
     file_name: String,
@@ -96,6 +96,7 @@ impl rustc_driver::Callbacks for MiraiCallbacks {
     /// At this point the compiler is ready to tell us all it knows and we can proceed to do abstract
     /// interpretation of all of the functions that will end up in the compiler output.
     /// If this method returns false, the compilation will stop.
+    /// 这个回调函数将会在rustc完成编译并获得MIR之后、在其转化MIR为LLVM IR之前被调用。
     #[logfn(TRACE)]
     fn after_analysis<'tcx>(
         &mut self,
@@ -116,6 +117,9 @@ impl rustc_driver::Callbacks for MiraiCallbacks {
         queries
             .global_ctxt()
             .unwrap()
+            // 现在流程控制权才从rustc回到MIRAI手里，接下来就是MIRAI的分析工作
+            // 关于这个tcx所属的TyCtxt，可参阅 https://rustc-dev-guide.rust-lang.org/ty.html
+            // 由于crate是rustc编译的最小单位，因此实际上这儿的tcx就是代表**单个**crate编译过后的上下文结果。
             .enter(|tcx| self.analyze_with_mirai(compiler, tcx));
         if self.test_run {
             // We avoid code gen for test cases because LLVM is not used in a thread safe manner.
@@ -131,8 +135,18 @@ impl MiraiCallbacks {
     /// Analyze the crate currently being compiled, using the information given in compiler and tcx.
     #[logfn(TRACE)]
     fn analyze_with_mirai<'tcx>(&mut self, compiler: &interface::Compiler, tcx: TyCtxt<'tcx>) {
+        // 记得这儿的tcx 是代表**单个**crate编译过后的上下文结果
+
+        // 尝试了一下:
+        // 1. 在一个只有main.rs的crate中运行，打印出了src/main.rs
+        // 2. 在Substrate Node Template中，因为它既有lib.rs又有main.rs，因此打印出了src/lib.rs和src/main.rs
+        println!("Calling MiraiCallbacks::analyze_with_mirai to analyze {} ...", self.file_name);
+
         if self.options.print_function_names {
+            // map::Map::body_owners()返回该crate中所有的DefId
             for local_def_id in tcx.hir().body_owners() {
+                // LocalDefId { idx } == DefId { krate: LOCAL_CRATE, index: idx }
+                // 其实这俩等价，只不过LocalDefId假定所有DefId都在本crate中找得到，不会有外来DefId，因此省略了krate字段
                 let def_id = local_def_id.to_def_id();
                 let span = tcx.def_span(def_id);
                 eprint!("{span:?}: ");

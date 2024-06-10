@@ -143,6 +143,8 @@ fn main() {
         }
 
         // 这个callbacks所属的类MiraiCallbacks实现了rustc_driver::Callbacks的trait，所以可以送给rustc
+        // 我们看不到此处显式地调用了MIRAI的分析手段，实际上是因为分析手段都在回调函数中，得去看callbacks.rs才能知道
+        // 这里把callbacks实例传递给rustc_driver::RunCompiler，然后调用其run方法，回调函数才会被启动
         let mut callbacks = callbacks::MiraiCallbacks::new(options);
         debug!(
             "rustc_command_line_arguments {:?}",
