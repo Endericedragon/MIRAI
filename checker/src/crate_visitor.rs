@@ -188,6 +188,7 @@ impl<'compilation, 'tcx> CrateVisitor<'compilation, 'tcx> {
             self.type_cache.clone(),
         );
         // Analysis local foreign contracts are not summarized and cached on demand, so we need to do it here.
+        // 这儿的空数组好像是函数的参数
         let summary = body_visitor.visit_body(&[]);
         let kind = self.tcx.def_kind(def_id);
         if matches!(kind, rustc_hir::def::DefKind::Static(..))

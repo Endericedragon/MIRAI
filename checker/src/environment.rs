@@ -552,6 +552,8 @@ impl Environment {
     }
 
     /// Returns a set of paths that do not have identical associated values in both self and other.
+    /// 总结起来就是：返回
+    /// 虽然path一样但两者(self和other)中value不一样的path、压根没在other里出现的value对应的path、other里有但self没有的path
     #[logfn_inputs(TRACE)]
     pub fn get_loop_variants(&self, other: &Environment) -> HashSet<Rc<Path>> {
         let mut loop_variants: HashSet<Rc<Path>> = HashSet::new();
@@ -562,16 +564,19 @@ impl Environment {
             match value_map2.get(path) {
                 Some(val2) => {
                     if !val1.eq(val2) {
+                        // 虽然path一样但value不一样的path
                         loop_variants.insert(p);
                     }
                 }
                 None => {
+                    // 压根没在other里出现的value对应的path
                     loop_variants.insert(p);
                 }
             }
         }
         for (path, _) in value_map2.iter() {
             if !value_map1.contains_key(path) {
+                // other里有但self没有的path
                 loop_variants.insert(path.clone());
             }
         }

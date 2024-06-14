@@ -131,6 +131,7 @@ impl Path {
 /// A path represents a left hand side expression.
 /// When the actual expression is evaluated at runtime it will resolve to a particular memory
 /// location. During analysis it is used to keep track of state changes.
+/// 大多数枚举项的本质都是AbstractValue，而AV实际上就是抽象分析中的“抽象”的值
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum PathEnum {
     /// A path that provides a location for a value that is not associated with a place in MIR.

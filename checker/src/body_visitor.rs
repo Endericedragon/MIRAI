@@ -191,9 +191,11 @@ impl<'analysis, 'compilation, 'tcx> BodyVisitor<'analysis, 'compilation, 'tcx> {
         &mut self,
         function_constant_args: &[(Rc<Path>, Ty<'tcx>, Rc<AbstractValue>)],
     ) -> Summary {
+        // 由options.rs定义，从命令行传入
         let diag_level = self.cv.options.diag_level;
         let max_analysis_time_for_body = self.cv.options.max_analysis_time_for_body;
         if cfg!(DEBUG) {
+            // 简单封装了一下rustc_middle::mir::write_mir_pretty()
             utils::pretty_print_mir(self.tcx, self.def_id);
         }
         debug!("entered body of {:?}", self.def_id);
@@ -203,6 +205,8 @@ impl<'analysis, 'compilation, 'tcx> BodyVisitor<'analysis, 'compilation, 'tcx> {
         // The entry block has no predecessors and the function parameters are its initial state
         // (which we omit here so that we can lazily provision them with additional context)
         // as well as any promoted constants.
+        // 解释一下MIR中的promition：其实就是把 &EXPR 转换为 { const _TEMP = &EXPR; _TEMP } 的过程
+        // 由于有const的参与，EXPR就会被丢到静态存储区去，提高了效率还腾出了栈空间
         let mut first_state = self.promote_constants();
 
         // Add parameter values that are function constants.

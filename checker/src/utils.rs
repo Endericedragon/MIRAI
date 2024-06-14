@@ -480,6 +480,7 @@ pub fn def_id_display_name(tcx: TyCtxt<'_>, def_id: DefId) -> String {
 }
 
 /// Returns false if any of the generic arguments are themselves generic
+/// 规定带有泛型变量T、生命周期'a、动态分派dyn等的类型不是具体的，返回false。
 pub fn are_concrete(gen_args: GenericArgsRef<'_>) -> bool {
     for gen_arg in gen_args.iter() {
         if let GenericArgKind::Type(ty) = gen_arg.unpack() {
@@ -502,12 +503,14 @@ pub fn is_concrete(ty: &TyKind<'_>) -> bool {
             are_concrete(gen_args)
         }
         TyKind::Tuple(types) => types.iter().all(|t| is_concrete(t.kind())),
-        TyKind::Bound(..)
-        | TyKind::Dynamic(..)
-        | TyKind::Error(..)
-        | TyKind::Infer(..)
-        | TyKind::Param(..) => false,
+        // 递归终点1
+        TyKind::Bound(..) // 似乎是生命周期的那个'a
+        | TyKind::Dynamic(..) // 似乎是动态分派的那个dyn
+        | TyKind::Error(..) // 真没见过，文档说是不可计算类型的占位符
+        | TyKind::Infer(..) // 似乎是从变量推断类型的某种奇怪的机制
+        | TyKind::Param(..) /* 泛型变量T */ => false,
         TyKind::Ref(_, ty, _) => is_concrete(ty.kind()),
+        // 递归终点2
         _ => true,
     }
 }

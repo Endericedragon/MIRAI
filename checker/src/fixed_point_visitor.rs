@@ -24,7 +24,9 @@ pub struct FixedPointVisitor<'fixed, 'analysis, 'compilation, 'tcx> {
     pub block_indices: Vec<mir::BasicBlock>,
     loop_anchors: HashSet<mir::BasicBlock>,
     dominators: Dominators<mir::BasicBlock>,
+    /// in_state\[bb\] is the join (or widening) of the out_state values of each predecessor of bb
     in_state: HashMap<mir::BasicBlock, Environment>,
+    /// out_state\[bb\] is the environment that results from analyzing block bb, given in_state[bb]
     out_state: HashMap<mir::BasicBlock, Environment>,
     pub terminator_state: HashMap<mir::BasicBlock, Environment>,
 }
@@ -46,6 +48,8 @@ impl<'fixed, 'analysis, 'compilation, 'tcx>
     pub fn new(
         body_visitor: &'fixed mut BodyVisitor<'analysis, 'compilation, 'tcx>,
     ) -> FixedPointVisitor<'fixed, 'analysis, 'compilation, 'tcx> {
+        //? 这儿的Dominator好像和编译原理中的“基本块支配关系”有关
+        //? 例如基本块A在B前面，但是B又能“控制”A，那么A和B之间就形成了循环
         let dominators = body_visitor.mir.basic_blocks.dominators();
         let (block_indices, loop_anchors) = get_sorted_block_indices(body_visitor.mir, dominators);
         // in_state[bb] is the join (or widening) of the out_state values of each predecessor of bb
@@ -76,11 +80,14 @@ impl<'fixed, 'analysis, 'compilation, 'tcx>
     pub fn visit_blocks(&mut self) {
         let blocks = self.block_indices.clone();
         for bb in blocks {
+            // 检查self.bv是否已经完成分析或者超时。若未完成分析则break
             check_for_early_break!(self.bv);
             if !self.already_visited.contains(&bb) {
                 if !self.loop_anchors.contains(&bb) {
+                    // bb基本块是循环的入口
                     self.visit_basic_block(bb, 0);
                 } else {
+                    //? 不会是不动点吧？
                     self.compute_fixed_point(bb);
                 }
             }
@@ -93,7 +100,9 @@ impl<'fixed, 'analysis, 'compilation, 'tcx>
     #[logfn_inputs(TRACE)]
     fn visit_basic_block(&mut self, bb: mir::BasicBlock, iteration_count: usize) {
         // Merge output states of predecessors of bb
+        // 先构造bb的入状态，这可以通过汇总bb的前驱基本块的出状态来实现
         let mut i_state = if iteration_count == 0 && bb.index() == 0 {
+            // 直接套用最最初始的状态，可以想象这是一个没有前驱基本块的基本块，它是整个执行流的开头
             self.bv.first_environment.clone()
         } else {
             self.get_initial_state_from_predecessors(bb, iteration_count)
@@ -200,19 +209,28 @@ impl<'fixed, 'analysis, 'compilation, 'tcx>
         iteration_count: usize,
     ) -> (bool, mir::BasicBlock) {
         let mut changed = false;
+        // 目前last_block暂时是循环的入口基本块
         let mut last_block = loop_anchor;
+        // self.block_indices其实就是从BodyVisitor中的MIR提取出来的所有基本块，而且经过了拓扑排序
         let blocks = self.block_indices.clone();
+        // 是当前基本块的"出状态"，如果"出状态"变化，changed就会被设置为true
         let old_state = self.out_state.clone();
         for bb in blocks {
+            // 遍历自身的所有基本块
             check_for_early_break!(self.bv);
             if !self.already_visited.contains(&bb) && self.dominators.dominates(loop_anchor, bb) {
+                // 注意这儿last_block被重新赋值了
+                // 由循环条件可知bb是受loop_anchor控制的，因此last_block永远是受loop_anchor控制的基本块
                 last_block = bb;
                 // Visit the next block, or the entire nested loop anchored by it.
                 if bb == loop_anchor {
+                    // 发现这个bb就是循环开头，那么直接访问该bb即可
                     self.visit_basic_block(bb, iteration_count); // join or widen
                 } else if self.loop_anchors.contains(&bb) {
+                    // 发现不止loop_ahcnor，这个bb自己也是一个循环的开头，于是递归地调用寻找不动点算法
                     last_block = self.compute_fixed_point(bb);
                 } else {
+                    // 除上述两种特殊情况外，其他情况都直接访问该bb
                     self.visit_basic_block(bb, 0); // conditional expressions
                 }
 
@@ -220,6 +238,7 @@ impl<'fixed, 'analysis, 'compilation, 'tcx>
                 if iteration_count > 3
                     && !self.out_state[&last_block].subset(&old_state[&last_block])
                 {
+                    // self.out_state[last_block]变宽了，说明有些路径上的值发生了变化，需要重新分析
                     // There is some path for which self.bv.current_environment.value_at(path) includes
                     // a value this is not present in self.out_state[last_block].value_at(path), so any block
                     // that used self.out_state[bb] as part of its input state now needs to get reanalyzed.
@@ -335,6 +354,8 @@ impl<'fixed, 'analysis, 'compilation, 'tcx>
 /// Do a topological sort, breaking loops by preferring lower block indices, using dominance
 /// to determine if there is a loop (if a is predecessor of b and b dominates a then they
 /// form a loop and we'll emit the one with the lower index first).
+/// 拓扑排序，获得当前节点的所有前驱结点构成的图的拓扑排序，并求取其中的循环入口
+/// 本质上是一个后序遍历，因此root_block会排在它的前驱节点后面
 #[logfn_inputs(TRACE)]
 fn add_predecessors_then_root_block<'tcx>(
     mir: &'tcx mir::Body<'tcx>,
@@ -351,6 +372,7 @@ fn add_predecessors_then_root_block<'tcx>(
         if already_added.contains(pred_bb) {
             continue;
         };
+        // 通过前驱节点的控制关系找到循环的存在，并且将循环的入口加入loop_anchors集合中
         if dominators.dominates(root_block, *pred_bb) {
             // pred_bb has still to be added, so it has a greater index than root_block, making root_block the loop anchor.
             //todo: checked_assume!(root_block.index() < pred_bb.index());

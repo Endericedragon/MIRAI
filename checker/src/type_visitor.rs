@@ -136,16 +136,18 @@ impl<'tcx> TypeVisitor<'tcx> {
         first_state: &mut Environment,
     ) {
         let mut is_ref = false;
+        // TyKind::Ref指代&'a (mut) T，这儿的小t恰好就是那个T
         if let TyKind::Ref(_, t, _) = path_ty.kind() {
             is_ref = true;
             path_ty = t;
         }
         match path_ty.kind() {
-            TyKind::Closure(_, args) => {
+            TyKind::Closure(_def_id, args) => {
                 if utils::are_concrete(args) {
                     for (i, ty) in args.as_closure().upvar_tys().iter().enumerate() {
                         let var_type = ExpressionType::from(ty.kind());
                         let mut qualifier = path.clone();
+                        // 如果是引用的话，就去找实际值在内存中的位置
                         if is_ref {
                             qualifier = Path::new_deref(path.clone(), ExpressionType::NonPrimitive)
                         }
