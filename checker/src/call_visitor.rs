@@ -345,6 +345,7 @@ impl<'call, 'block, 'analysis, 'compilation, 'tcx>
             let func_args = self.get_function_constant_signature(self.function_constant_args);
             let tcx = self.block_visitor.bv.tcx;
             let callee_defid = func_ref.def_id.unwrap_or(self.callee_def_id);
+            //? Callgraph::add_call_site的唯一一处调用
             self.block_visitor.bv.cv.call_graph.add_call_site(
                 self.block_visitor.bv.current_span,
                 self.block_visitor.bv.def_id,

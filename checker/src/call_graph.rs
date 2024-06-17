@@ -178,11 +178,12 @@ struct CallGraphNode {
     defid: DefId,
     /// The name of the function (derived from its DefId).
     name: Box<str>,
-    /// The type of the node.
+    /// The type of the node. 有Root和CRoot两种，后者应该是整个有向图的根
     node_type: NodeType,
 }
 
 impl CallGraphNode {
+    /// 创建CRoot类型的节点。这是图的唯一根节点
     pub fn new_croot(defid: DefId) -> CallGraphNode {
         CallGraphNode {
             defid,
@@ -190,7 +191,7 @@ impl CallGraphNode {
             node_type: NodeType::CRoot,
         }
     }
-
+    /// 创建Root类型的节点。这是图的普通节点
     pub fn new_root(defid: DefId) -> CallGraphNode {
         CallGraphNode {
             defid,
@@ -388,12 +389,14 @@ impl<'tcx> CallGraph<'tcx> {
         match self.nodes.entry(defid) {
             Entry::Occupied(node) => {
                 // Replace non-croot existing node
-                let node_id = node.get().to_owned();
-                if let Some(node_weight) = self.graph.node_weight_mut(node_id) {
+                let node_id = node.get()/* 把node的值value给拿出来 */.to_owned();
+                if let Some(node_weight) = self.graph.node_weight_mut(node_id)/* 类似于&mut self.graph[node_id] */ {
+                    // 这段的意思其实非常简单明了。如果给定的def_id已经存在，那就把这个节点设定成CRoot类型。
                     *node_weight = croot;
                 }
             }
             Entry::Vacant(v) => {
+                // 直接将新节点加进去即可，并且将申请到的node_id存入哈希表中
                 let node_id = self.graph.add_node(croot);
                 let _ = *v.insert(node_id);
             }
@@ -407,6 +410,7 @@ impl<'tcx> CallGraph<'tcx> {
             let node_id = self.graph.add_node(croot);
             e.insert(node_id);
         }
+        // 由于普通节点不像根节点那样会乱换，因此发现defid在self.nodes中已经存在时不作任何处理
     }
 
     /// Helper function to get a node or insert a new
@@ -425,6 +429,8 @@ impl<'tcx> CallGraph<'tcx> {
     // and omit any calls where the caller is known to be external to the crate being analyzed.
     //todo: to make this a precise as possible a callee should only be marked as external
     // if no Trait type is reachable from a parameter type.
+    /// 这是最直观的往callsites中加入信息的方法，必须追踪其被调用的情况
+    /// 找到了，在call_visitor.rs中的第349行
     pub fn add_call_site(
         &mut self,
         loc: rustc_span::Span,
